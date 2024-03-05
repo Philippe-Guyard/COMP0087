@@ -57,6 +57,24 @@ dataset = raw_dataset['train']
 output_dir = Path(f'./{experiment_name}/outputs')
 output_dir.mkdir(parents=True, exist_ok=True)
 
+training_args = TrainingArguments(
+    per_device_train_batch_size = 2,
+    gradient_accumulation_steps = 4,
+    warmup_steps = 5,
+    max_steps = len(dataset),
+    learning_rate = 2e-4,
+    fp16 = not torch.cuda.is_bf16_supported(),
+    bf16 = torch.cuda.is_bf16_supported(),
+    logging_steps = 1,
+    optim = "adamw_8bit",
+    weight_decay = 0.01,
+    lr_scheduler_type = "linear",
+    seed = 3407,
+    output_dir = output_dir.as_posix(),
+    report_to='wandb',
+    run_name=experiment_name
+)
+
 trainer = SFTTrainer(
     model = model,
     tokenizer = tokenizer,
@@ -65,21 +83,7 @@ trainer = SFTTrainer(
     max_seq_length = max_seq_length,
     dataset_num_proc = 2,
     packing = False, # Can make training 5x faster for short sequences.
-    args = TrainingArguments(
-        per_device_train_batch_size = 2,
-        gradient_accumulation_steps = 4,
-        warmup_steps = 5,
-        max_steps = len(dataset),
-        learning_rate = 2e-4,
-        fp16 = not torch.cuda.is_bf16_supported(),
-        bf16 = torch.cuda.is_bf16_supported(),
-        logging_steps = 1,
-        optim = "adamw_8bit",
-        weight_decay = 0.01,
-        lr_scheduler_type = "linear",
-        seed = 3407,
-        output_dir = output_dir.as_posix(),
-    ),
+    args = training_args
 )
 
 trainer_stats = trainer.train()
