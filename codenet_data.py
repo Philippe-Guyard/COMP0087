@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from queue import SimpleQueue
 
 from bs4 import BeautifulSoup
-from langdetect import detect
+import langdetect
 
 CODENET_ROOT = Path('./Project_CodeNet/')
 
@@ -85,7 +85,7 @@ class CodeNetIter:
             try:
                 soup = BeautifulSoup(file, 'html.parser')
                 text_content = ' '.join(element.get_text(strip=True) for element in soup.find_all('p')) 
-                detected_language = detect(text_content) 
+                detected_language = langdetect.detect(text_content) 
             except IOError as e:
                 print(f"Error opening or reading file: {e}")
                 return False 
