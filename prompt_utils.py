@@ -3,7 +3,7 @@ def cut_text(txt: str, cut_ratio=0.1):
     Cut cut_ratio of the text from the end 
     '''
     stripped = txt.strip('\n ')
-    end_idx = min(int(cut_ratio * len(stripped)), 1)
+    end_idx = max(int(cut_ratio * len(stripped)), 1)
     return stripped[:-end_idx]
 
 def find_nth(haystack: str, needle: str, n: int) -> int:
