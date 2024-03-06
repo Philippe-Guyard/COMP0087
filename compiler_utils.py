@@ -32,8 +32,9 @@ def try_compile_cpp(src_path: Path=None, lines: List[str]=None, text: str=None):
     
     cmd = ["g++", '-Wall', '-fdiagnostics-format=json', src_path.as_posix()]
     out = subprocess.run(cmd, capture_output=True)
+    # TODO: This should be parsed with json.loads to see the errors and warnings generated 
     return ParsedCompilerOutput(
         returncode=out.returncode,
         stdout=out.stdout,
-        stderr=json.loads(out.stderr)
+        stderr=out.stderr 
     )
