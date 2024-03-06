@@ -4,7 +4,7 @@ def cut_text(txt: str, cut_ratio=0.1):
     '''
     stripped = txt.strip('\n ')
     end_idx = min(int(cut_ratio * len(stripped)), 1)
-    return stripped[:end_idx]
+    return stripped[:-end_idx]
 
 def find_nth(haystack: str, needle: str, n: int) -> int:
     start = haystack.find(needle)
