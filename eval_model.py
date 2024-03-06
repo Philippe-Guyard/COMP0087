@@ -1,13 +1,15 @@
 from dataclasses import dataclass, field
 from typing import Optional
 from pathlib import Path
+import json 
 
+from experiments import Experiment
 from prompt_utils import make_prompt, parse_code, cut_text
 from compiler_utils import try_compile_cpp
 
 @dataclass
 class Evaluation:
-    experiment_name: str 
+    experiment: Experiment 
     evaluation_id: str 
     prompt: str 
     output: str 
@@ -15,7 +17,7 @@ class Evaluation:
 
     @property
     def eval_folder(self) -> Path:
-        return Path(f'./{self.experiment_name}/evals/{self.evaluation_id}')
+        return self.experiment.root_folder.joinpath(f'./evals/{self.evaluation_id}')
 
     @property 
     def prompt_file_path(self) -> Path:
@@ -55,34 +57,17 @@ def get_prompts(samples_path: Path):
 
     return prompts
 
-experiment_name = 'exp-codellama-7b'
 prompts = get_prompts('./samples.txt')
 
-# UNSLOTH GET MODEL START 
-from unsloth import FastLanguageModel
-max_seq_length = 8192 # Choose any! We auto support RoPE Scaling internally!
-dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
-load_in_4bit = True # Use 4bit quantization to reduce memory usage. Can be False.
+experiment = Experiment(
+    model="unsloth/mistral-7b-instruct-v0.2-bnb-4bit",
+    exp_type='eval',
+    seq_length=8192,
+    max_new_tokens=1024
+) 
 
-# 4bit pre quantized models we support for 4x faster downloading + no OOMs.
-fourbit_models = [
-    "unsloth/mistral-7b-bnb-4bit",
-    "unsloth/mistral-7b-instruct-v0.2-bnb-4bit",
-    "unsloth/llama-2-7b-bnb-4bit",
-    "unsloth/llama-2-13b-bnb-4bit",
-    "unsloth/codellama-34b-bnb-4bit",
-    "unsloth/tinyllama-bnb-4bit",
-] # More models at https://huggingface.co/unsloth
-
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name = "unsloth/codellama-7b-bnb-4bit", # "unsloth/mistral-7b" for 16bit loading
-    max_seq_length = max_seq_length,
-    dtype = dtype,
-    load_in_4bit = load_in_4bit,
-    # token = "hf_...", # use one if using gated models like meta-llama/Llama-2-7b-hf
-)
-
-# UNSLOTH GET MODEL END 
+model, tokenizer = experiment.get_unsloth_model()
+sample_results = dict()
 
 # If this is too big we OOM for some reason...
 PROMPT_BATCH_SIZE = 5
@@ -96,6 +81,14 @@ for prompt_batch_idx in range(PROMPT_BATCHES):
     for seq_idx, (prompt, output_sequence) in enumerate(zip(prompts, outputs)):
         output = tokenizer.decode(output_sequence, skip_special_tokens=True)
         seq_id = prompt_batch_idx * PROMPT_BATCH_SIZE + seq_idx 
-        evaluation = Evaluation(experiment_name, seq_id, prompt, output)
+        evaluation = Evaluation(experiment, seq_id, prompt, output)
         compile_result = try_compile_cpp(src_path=evaluation.code_output_file_path)
-        print(f'Sample {seq_id} is {"Good" if compile_result.returncode == 0 else "Bad"}')
+        sample_status = "Good" if compile_result.returncode == 0 else "Bad"
+        print(f'Sample {seq_id} is {sample_status}')
+        sample_results[seq_id] = {
+            'Status': sample_status,
+            'stderr': compile_result.stderr
+        }
+
+with open(experiment.root_folder.joinpath('results.json'), 'w') as results_file:
+    json.dump(sample_results, results_file)
