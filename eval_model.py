@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 from pathlib import Path
 
-from prompt_utils import make_prompt, parse_code
+from prompt_utils import make_prompt, parse_code, cut_text
 from compiler_utils import try_compile_cpp
 
 @dataclass
@@ -51,7 +51,7 @@ def get_prompts(samples_path: Path):
         for sample in samples:
             with open(sample.strip('\n')) as f:
                 text = f.read()
-                prompts.append(make_prompt(text))
+                prompts.append(make_prompt(cut_text(text)))
 
     return prompts
 
