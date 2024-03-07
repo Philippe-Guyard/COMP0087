@@ -91,7 +91,7 @@ for prompt_batch_idx in range(PROMPT_BATCHES):
         print(f'Sample {seq_id} is {sample_status}')
         sample_results[seq_id] = {
             'Status': sample_status,
-            'stderr': compile_result.stderr
+            'stderr': compile_result.stderr.decode('utf-8')
         }
 
 with open(experiment.root_folder.joinpath('results.json'), 'w') as results_file:
