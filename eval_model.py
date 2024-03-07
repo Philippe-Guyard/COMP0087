@@ -4,7 +4,7 @@ from pathlib import Path
 import json 
 
 from experiments import Experiment
-from prompt_utils import make_prompt, parse_code, cut_text
+from prompt_utils import make_prompt_template, parse_code, cut_text
 from compiler_utils import try_compile_cpp
 
 @dataclass
@@ -45,19 +45,19 @@ class Evaluation:
             with open(file_path, 'w') as file:
                 file.write(text)
 
-def get_prompts(samples_path: Path):
-    prompts = []
+def get_prompt_templates(samples_path: Path):
+    prompt_templates = []
     
     with open(samples_path) as samples_file:
         samples = samples_file.readlines()
         for sample in samples:
             with open(sample.strip('\n')) as f:
                 text = f.read()
-                prompts.append(make_prompt(cut_text(text)))
+                prompt_templates.append(make_prompt_template(cut_text(text)))
 
-    return prompts
+    return prompt_templates
 
-prompts = get_prompts('./samples.txt')
+prompt_templates = get_prompt_templates('./samples.txt')
 
 experiment = Experiment(
     model="unsloth/mistral-7b-instruct-v0.2-bnb-4bit",
@@ -67,6 +67,10 @@ experiment = Experiment(
 ) 
 
 model, tokenizer = experiment.get_unsloth_model()
+prompts = [
+    tokenizer.apply_chat_template(template, tokenize=False)
+    for template in prompt_templates 
+]
 sample_results = dict()
 
 # If this is too big we OOM for some reason...

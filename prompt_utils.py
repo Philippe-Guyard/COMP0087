@@ -21,24 +21,46 @@ def parse_code(output: str, n_examples=1):
 
     return output[code_start_idx : code_end_idx + 1]
 
-def make_prompt(truncated_txt: str):
-    prompt_str = '''Please complete the following source code to make it a valid C++ program that can be compiled with C++17. Make sure to only include the code in your answer
-Example:
-Input: 
+def make_prompt_template(truncated_txt: str):
+    return [
+    {
+        'role': 'user',
+        'content': '''You are an assistant that helps users with writing compiler-friendly C++ programmes. Your outputs should be exclusively C++ programmes that can be compiled with C++17.
+Please make sure to delimit your code with ```. Here is an example:
+```
+#include <iostream>
+
+using namespace std; 
+
 int main() {{
-    printf("Hello, 
-Output:
-int main() {{
-    printf("Hello, World!");
-}}
-Task:
-Input: 
-{0}
-Output:
+    cout << "Hello, 
+```
 '''
-    return prompt_str.format(truncated_txt)
+    },
+    {
+        'role': 'assistant',
+        'content': '''
+```
+#include <iostream>
+
+using namespace std; 
+
+int main() {{
+    cout << "Hello, World! << endl;
+}}
+```'''
+    },
+    {
+        'role': 'user',
+        'content': '```\n' + truncated_txt + '\n```'
+    },
+    ]
 
 def make_sft_example(txt: str):
     truncated_txt = cut_text(txt)
-    prompt = make_prompt(truncated_txt)
-    return prompt + txt + '\n'
+    prompt_template = make_prompt_template(truncated_txt)
+    prompt_template.append({
+        'role': 'assistant',
+        'content': '```\n' + txt + '\n```'  
+    })
+    return prompt_template
