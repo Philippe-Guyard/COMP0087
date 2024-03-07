@@ -23,13 +23,13 @@ def get_sft_target(ex):
 
 from datasets import load_dataset
 raw_dataset = load_dataset('text', data_files=samples_file)
+model, tokenizer = exp.get_unsloth_model()
 raw_dataset = raw_dataset.map(get_sft_target, load_from_cache_file=False, keep_in_memory=False)
+raw_dataset = raw_dataset.map(lambda x: {"text": tokenizer.apply_chat_template(x["text"], tokenize=False, add_generation_prompt=False)})
 dataset = raw_dataset['train']
 
 output_dir = exp.root_folder.joinpath('outputs')
 output_dir.mkdir(parents=True, exist_ok=True)
-
-model, tokenizer = exp.get_unsloth_model()
 
 training_args = TrainingArguments(
     per_device_train_batch_size = 2,

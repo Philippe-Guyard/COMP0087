@@ -74,4 +74,4 @@ class Experiment:
                 loftq_config = None, # And LoftQ
             )
 
-        return model
+        return model, tokenizer
