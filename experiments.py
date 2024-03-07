@@ -37,7 +37,7 @@ class Experiment:
         self.exp_name = f'{self.exp_type}_{self.model.replace("/", "_")}_{self.seq_length}'
         if self.root_folder.exists():
             while True:
-                overwrite = input(f'Experiment {self.exp_name} already exists. Do you want to overwrite (y/n)?').lower()
+                overwrite = input(f'Experiment {self.exp_name} already exists. Do you want to overwrite (y/n)? ').lower()
                 if overwrite.startswith('y'):
                     shutil.rmtree(self.root_folder)
                     break
