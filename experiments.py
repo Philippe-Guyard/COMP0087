@@ -34,7 +34,7 @@ class Experiment:
         return EXPERIMENTS_ROOT.joinpath(self.exp_name)
 
     def __post_init__(self):
-        self.exp_name = f'{self.exp_type}_{self.model}_{self.seq_length}'
+        self.exp_name = f'{self.exp_type}_{self.model.replace("/", "_")}_{self.seq_length}'
         if self.root_folder.exists():
             while True:
                 overwrite = input(f'Experiment {self.exp_name} already exists. Do you want to overwrite (y/n)?').lower()
