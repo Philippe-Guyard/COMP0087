@@ -40,6 +40,7 @@ class Experiment:
                 overwrite = input(f'Experiment {self.exp_name} already exists. Do you want to overwrite (y/n)?').lower()
                 if overwrite.startswith('y'):
                     shutil.rmtree(self.root_folder)
+                    break
                 elif overwrite.startswith('n'):
                     assert False, 'Experiment already exists. Breaking'
                 else:
