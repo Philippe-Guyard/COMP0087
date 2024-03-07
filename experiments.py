@@ -50,7 +50,6 @@ class Experiment:
         # Also save start and last update time 
         
     def get_unsloth_model(self) -> Tuple[FastLanguageModel, PreTrainedTokenizer]:
-        assert self.exp_type == 'eval'
         dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
         load_in_4bit = True # Use 4bit quantization to reduce memory usage. Can be False.
         model, tokenizer = FastLanguageModel.from_pretrained(
@@ -60,4 +59,19 @@ class Experiment:
             load_in_4bit = load_in_4bit,
         )
 
-        return model, tokenizer
+        if self.exp_type == 'train':
+            model = FastLanguageModel.get_peft_model(
+                model,
+                r = self.lora_r, # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
+                target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
+                                "gate_proj", "up_proj", "down_proj",],
+                lora_alpha = self.lora_alpha,
+                lora_dropout = 0, # Supports any, but = 0 is optimized
+                bias = "none",    # Supports any, but = "none" is optimized
+                use_gradient_checkpointing = True,
+                random_state = 3407,
+                use_rslora = False,  # We support rank stabilized LoRA
+                loftq_config = None, # And LoftQ
+            )
+
+        return model
