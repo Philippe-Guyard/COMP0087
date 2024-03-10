@@ -3,3 +3,5 @@ __pycache__
 *.sh
 *.o
 samples.txt
+samples_big.txt
+wandb
