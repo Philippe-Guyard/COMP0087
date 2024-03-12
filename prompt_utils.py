@@ -1,3 +1,7 @@
+from bs4 import BeautifulSoup
+import re
+from pathlib import Path
+
 def cut_text(txt: str, cut_ratio=0.1):
     '''
     Cut cut_ratio of the text from the end 
@@ -19,6 +23,9 @@ def parse_code(output: str, n_examples=1):
     code_start_idx = find_nth(output, code_delimiter, 8) + len(code_delimiter)
     code_end_idx   = find_nth(output, code_delimiter, 9) 
 
+    if(code_start_idx == -1 or code_end_idx == -1):
+        return output
+    
     return output[code_start_idx : code_end_idx]
 
 def make_prompt_template(truncated_txt: str):
@@ -57,6 +64,105 @@ int main() {{
     },
     ]
 
+def make_prompt_template_pd(truncated_txt: str, pd: str):
+    return [
+    {
+        'role': 'user',
+        'content': '''You are an assistant that helps users with writing compiler-friendly C++ programmes. Your outputs should be exclusively C++ programmes that can be compiled with C++17.
+Please make sure to delimit your code with #####. Here is an example:
+
+Problem Description: 
+
+Write a program that prints out "Hello, World!" to the standard output
+
+Code:
+
+#####
+#include <iostream>
+
+using namespace std; 
+
+int main() {{
+    cout << "Hello, 
+#####
+'''
+    },
+    {
+        'role': 'assistant',
+        'content': '''
+#####
+#include <iostream>
+
+using namespace std; 
+
+int main() {{
+    cout << "Hello, World! << endl;
+}}
+#####
+'''
+    },
+    {
+        'role': 'user',
+        'content': '\nProblem Desription:\n' + pd + '\nCode:\n#####\n' + truncated_txt + '\n#####\n'
+    },
+    ]
+
+
+def make_alpaca_prompt_template(code_snippet: str):
+    alpaca_prompt = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+Complete the code given in the input to produce a valid C++ program. Your response should only include C++ code, delimited with #####. Here is an example:
+
+Input:
+#####
+#include <iostream>
+
+using namespace std; 
+
+int main() {{
+    cout << "Hello, 
+#####
+
+Response:
+#####
+#include <iostream>
+
+using namespace std; 
+
+int main() {{
+    cout << "Hello, World! << endl;
+}}
+#####
+### Input:
+#####
+{code_snippet}
+#####
+### Response:
+{}"""
+    return [alpaca_prompt]
+
+def make_simple_prompt_template(code_snippet: str, pd: str):
+    prompt_template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+{}
+
+### Input:
+{}
+
+### Response:
+{}"""
+    prompt_template = prompt_template.format("Complete the C++ prgoram", code_snippet, "")
+    #return """You are a coding assistant. Complete this C++ code and give the completed version as output. Do not repeat yourself. Code: int main() {for(int rows=1;rows<10;rows++){for(int colm=1;colm<10;colm++){cout <<rows <<"x" <<colm<<"="<<rows*colm<<endl;} Completed Code:"""
+    # lines = pd.splitlines() 
+    # lines = '\n'.join('#' + line for line in lines)  
+    # prompt_template = """#complete main function \n\n {code_snippet}"""
+    # prompt_template = prompt_template.format(pd = lines, code_snippet=code_snippet)
+    #prompt_template = ' '.join(line for line in prompt_template.splitlines())
+    #prompt_template = prompt_template.replace('\t', ' ')
+    print(prompt_template)
+    return prompt_template
 def make_sft_example(txt: str):
     truncated_txt = cut_text(txt)
     prompt_template = make_prompt_template(truncated_txt)
@@ -65,3 +171,33 @@ def make_sft_example(txt: str):
         'content': '#####\n' + txt + '\n#####'  
     })
     return prompt_template
+
+def parse_pd_html(pd_path: str):
+    with open(pd_path) as f:
+        data = f.read()
+
+    soup = BeautifulSoup(data, 'html.parser')
+
+    # Find all headings and insert newlines 
+    for heading in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+        if(heading.next_sibling):
+            if '\n' not in heading.next_sibling:  
+                heading.insert_after(BeautifulSoup('\n', 'html.parser')) 
+
+    text = soup.get_text()
+
+    # remove multiple newlines and just have one
+    text = re.sub(r'\n{1,}', '\n', text)
+
+    symbol_replacements = {
+        r'\\leq': '≤', 
+        r'\\geq': '≥', 
+        r'\\max': 'max',
+        r'\\min': 'min',
+        # ... 
+    }
+
+    for pattern, replacement in symbol_replacements.items():
+        text = re.sub(pattern, replacement, text)
+
+    return text
