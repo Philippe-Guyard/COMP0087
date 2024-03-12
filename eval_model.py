@@ -4,8 +4,9 @@ from pathlib import Path
 import json 
 
 from experiments import Experiment
-from prompt_utils import make_prompt_template, parse_code, cut_text
+from prompt_utils import make_prompt_template, parse_code, cut_text, make_prompt_template_pd, parse_pd_html, make_simple_prompt_template
 from compiler_utils import try_compile_cpp
+import os
 
 @dataclass
 class Evaluation:
@@ -45,25 +46,38 @@ class Evaluation:
             with open(file_path, 'w') as file:
                 file.write(text)
 
-def get_prompt_templates(samples_path: Path):
+def get_prompt_templates(samples_path: Path, include_pd: bool = False):
     prompt_templates = []
-    
+
     with open(samples_path) as samples_file:
         samples = samples_file.readlines()
         for sample in samples:
+
             with open(sample.strip('\n')) as f:
                 text = f.read()
-                prompt_templates.append(make_prompt_template(cut_text(text)))
+                code_sample = cut_text(text)
 
-    return prompt_templates
+            if(include_pd):
+                problem_id = sample.strip('\n').split("/")[-3]
+                pd_path = f"../Project_CodeNet/problem_descriptions/{problem_id}.html"
+                pd = parse_pd_html(pd_path)
 
-prompt_templates = get_prompt_templates('./samples.txt')
+                template = make_simple_prompt_template(code_sample, pd)
+            else:
+                template = make_prompt_template(code_sample)
+
+            prompt_templates.append(template)
+            
+    return prompt_templates  
+
+prompt_templates = get_prompt_templates('./samples_small.txt', True)
 
 experiment = Experiment(
-    model="unsloth/mistral-7b-instruct-v0.2-bnb-4bit",
+    model="unsloth/codellama-7b-bnb-4bit",
     exp_type='eval',
     seq_length=8192,
-    max_new_tokens=1024
+    max_new_tokens=1024,
+    exp_name='eval_codellama_7b_pd'
 ) 
 
 model, tokenizer = experiment.get_unsloth_model()
@@ -71,11 +85,12 @@ prompts = [
     tokenizer.apply_chat_template(template, tokenize=False)
     for template in prompt_templates 
 ]
+
 sample_results = dict()
 
 # If this is too big we OOM for some reason...
 PROMPT_BATCH_SIZE = 5
-PROMPT_BATCHES = 5 # (len(prompts) + PROMPT_BATCH_SIZE - 1) // PROMPT_BATCH_SIZE
+PROMPT_BATCHES = (len(prompts) + PROMPT_BATCH_SIZE - 1) // PROMPT_BATCH_SIZE
 
 print("STARTING EVAL")
 for prompt_batch_idx in range(PROMPT_BATCHES):
