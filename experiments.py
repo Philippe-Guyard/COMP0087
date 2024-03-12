@@ -2,6 +2,7 @@ from typing import Literal, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field
 import shutil
+import os
 
 from transformers import PreTrainedTokenizer
 
@@ -51,6 +52,7 @@ class Experiment:
         # Also save start and last update time 
         
     def get_unsloth_model(self) -> Tuple[FastLanguageModel, PreTrainedTokenizer]:
+        print(f"HF_HOME: {os.environ.get('HF_HOME')}")
         dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
         load_in_4bit = True # Use 4bit quantization to reduce memory usage. Can be False.
         model, tokenizer = FastLanguageModel.from_pretrained(
