@@ -1,4 +1,5 @@
 experiments/*
+samples/*
 __pycache__
 *.sh
 *.o
