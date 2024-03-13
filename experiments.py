@@ -20,6 +20,25 @@ UNSLOTH_FOURBIT_MODELS = [
     "unsloth/tinyllama-bnb-4bit",
 ] # More models at https://huggingface.co/unsloth
 
+DATASETS_ROOT = Path('./datasets') 
+
+@dataclass
+class NLPDataset:
+    dataset_type: Literal['samples', 'preferences']
+    dataset_name: str 
+
+    def get_path(self, subset='train'):
+        assert subset in ('train', 'test')
+        extension = 'json' if self.dataset_type == 'preferences' else 'txt'
+        return DATASETS_ROOT.joinpath(f'{self.dataset_name}_{subset}.{extension}') 
+    
+    def as_list(self, subset='train'):
+        assert self.dataset_type == 'samples', 'Probably a bad idea to load preference dataset as list'
+        return self.get_path(subset).read_text().splitlines()
+    
+    def as_hf_dataset(self):
+        assert False, 'Not implemented'
+
 @dataclass
 class Experiment:
     model: str 

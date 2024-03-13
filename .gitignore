@@ -1,5 +1,5 @@
 experiments/*
-samples/*
+datasets/*
 __pycache__
 *.sh
 *.o

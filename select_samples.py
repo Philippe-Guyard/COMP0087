@@ -10,10 +10,10 @@ from collections import defaultdict
 from codenet_data import CodeNetIter, CodeNetSolution
 from codenet_utils import CachedMetadataReader
 from compiler_utils import try_compile_cpp
+from experiments import NLPDataset
 
-TRAIN_PATH = './samples/samples_train.txt'
-TEST_PATH = './samples/samples_test.txt'
-
+DATASET_NAME = 'samples_big'
+dataset = NLPDataset('samples', DATASET_NAME)
 metadata_cache = CachedMetadataReader(maxsize=100)
 
 myiter = CodeNetIter(language='C++', limit=None)
@@ -21,7 +21,7 @@ myiter = CodeNetIter(language='C++', limit=None)
 pids_seen = (defaultdict(int), defaultdict(int))
 TRAIN_PBS_PER_PID = 5
 TEST_PBS_PER_PID = 2
-dataset = [
+dataset_values = [
     [], # train 
     []  # test 
 ]
@@ -40,9 +40,10 @@ for x in myiter:
     
     dataset_idx = 0 if pids_seen[x.problem_id][0] >= TRAIN_PBS_PER_PID else 1 
     pids_seen[x.problem_id][dataset_idx] += 1
+    dataset_values[dataset_idx].append(x.src_path)
 
-with open(TRAIN_PATH, 'w') as train_file:
-    train_file.writelines(dataset[0])
+with open(dataset.get_path('train'), 'w') as train_file:
+    train_file.writelines(dataset_values[0])
 
-with open(TEST_PATH, 'w') as test_file:
-    test_file.writelines(dataset[1])
+with open(dataset.get_path('test'), 'w') as test_file:
+    test_file.writelines(dataset_values[1])
