@@ -39,14 +39,17 @@ class Experiment:
             self.exp_name = f'{self.exp_type}_{self.model.replace("/", "_")}_{self.seq_length}'
         if self.root_folder.exists():
             while True:
-                overwrite = input(f'Experiment {self.exp_name} already exists. Do you want to overwrite (y/n)? ').lower()
-                if overwrite.startswith('y'):
+                print(f'Experiment {self.exp_name} already exists. Please choose an appropriate action:')
+                action = input('D - delete previous and overwrite. I - ignore. A - Abort').lower()
+                if action == 'D':
                     shutil.rmtree(self.root_folder)
                     break
-                elif overwrite.startswith('n'):
+                elif action == 'A': 
                     assert False, 'Experiment already exists. Breaking'
+                elif action == 'I':
+                    break 
                 else:
-                    print('Invalid option:', overwrite)
+                    print('Invalid option:', action)
 
         # TODO: Save hyperparams in some config.json 
         # Also save start and last update time 
