@@ -49,7 +49,6 @@ class Evaluation:
 
 def get_prompt_templates(samples_path: Path, include_pd: bool = False):
     prompt_templates = []
-
     with open(samples_path) as samples_file:
         samples = samples_file.readlines()
         for sample in samples:
@@ -57,7 +56,7 @@ def get_prompt_templates(samples_path: Path, include_pd: bool = False):
             with open(sample.strip('\n')) as f:
                 text = f.read()
                 code_sample = cut_text(text)
-
+            
             if(include_pd):
                 problem_id = sample.strip('\n').split("/")[-3]
                 pd_path = f"../Project_CodeNet/problem_descriptions/{problem_id}.html"
@@ -71,14 +70,14 @@ def get_prompt_templates(samples_path: Path, include_pd: bool = False):
             
     return prompt_templates  
 
-prompt_templates = get_prompt_templates('./samples_small.txt', True)
+prompt_templates = get_prompt_templates('./samples_big.txt', False)
 
 experiment = Experiment(
-    model="unsloth/codellama-7b-bnb-4bit",
+    model='experiments/dpo_mistral_sfted/final',
     exp_type='eval',
     seq_length=8192,
     max_new_tokens=1024,
-    exp_name='eval_codellama_7b_pd'
+    exp_name='eval_dpo_mistral'
 ) 
 
 last_sample = 0
@@ -94,26 +93,25 @@ prompts = [
 
 sample_results = dict()
 if last_sample > 0:
-    temp_path = experiment.root_folder.joinpath(f'results_0_{len(last_sample)}.json')
+    temp_path = experiment.root_folder.joinpath(f'results_0_{last_sample}.json')
     with open(temp_path) as temp_results_file:
         sample_results = json.load(temp_results_file)
 
 # If this is too big we OOM for some reason...
-PROMPT_BATCH_SIZE = 5
+PROMPT_BATCH_SIZE = 25
 PROMPT_BATCHES = (len(prompts) + PROMPT_BATCH_SIZE - 1) // PROMPT_BATCH_SIZE
-SAVE_BATCHES = 10
+SAVE_BATCHES = 5
+
+first_batch = last_sample // PROMPT_BATCH_SIZE
+print(f'Found existing results file with {last_sample} examples. Skipping {first_batch} batches')
 
 print("STARTING EVAL")
-for prompt_batch_idx in tqdm(range(PROMPT_BATCHES), desc='Batches done'):
-    # NOTE: Need to do it like this because we want to preserve seq ids
-    if (prompt_batch_idx + 1) * PROMPT_BATCH_SIZE < last_sample:
-        continue # already done
-
+for prompt_batch_idx in tqdm(range(first_batch, PROMPT_BATCHES), desc='Generating batches'):
     prompt_batch = prompts[prompt_batch_idx * PROMPT_BATCH_SIZE: (prompt_batch_idx + 1) * PROMPT_BATCH_SIZE]
     inputs = tokenizer(prompt_batch, return_tensors = "pt", padding=True, truncation=True, max_length=8192).to('cuda')
-    outputs = model.generate(**inputs, max_new_tokens=1024, pad_token_id=tokenizer.eos_token_id)
-    for seq_idx, (prompt, output_sequence) in enumerate(zip(prompts, outputs)):
-        output = tokenizer.decode(output_sequence, skip_special_tokens=True)
+    outputs = model.generate(**inputs, max_new_tokens=1024, use_cache=True, pad_token_id=tokenizer.eos_token_id)
+    decoded_outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    for seq_idx, (prompt, output) in enumerate(zip(prompts, decoded_outputs)):
         seq_id = prompt_batch_idx * PROMPT_BATCH_SIZE + seq_idx 
         evaluation = Evaluation(experiment, seq_id, prompt, output)
         compile_result = try_compile_cpp(src_path=evaluation.code_output_file_path)
@@ -124,8 +122,9 @@ for prompt_batch_idx in tqdm(range(PROMPT_BATCHES), desc='Batches done'):
             'stderr': compile_result.stderr.decode('utf-8')
         }
 
-    if len(sample_results) > 0 and len(sample_results) % SAVE_BATCHES * PROMPT_BATCH_SIZE == 0:
+    if len(sample_results) > 0 and len(sample_results) % (SAVE_BATCHES * PROMPT_BATCH_SIZE) == 0:
         temp_path = experiment.root_folder.joinpath(f'results_0_{len(sample_results)}.json')
+        print(f'Saving results to {temp_path}')
         with open(temp_path, 'w') as temp_results_file:
             json.dump(sample_results, temp_results_file)
 

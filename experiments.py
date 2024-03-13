@@ -40,7 +40,8 @@ class Experiment:
         if self.root_folder.exists():
             while True:
                 print(f'Experiment {self.exp_name} already exists. Please choose an appropriate action:')
-                action = input('D - delete previous and overwrite. I - ignore. A - Abort').lower()
+                print('D - delete previous and overwrite. I - ignore. A - Abort')
+                action = input()
                 if action == 'D':
                     shutil.rmtree(self.root_folder)
                     break
@@ -50,7 +51,8 @@ class Experiment:
                     break 
                 else:
                     print('Invalid option:', action)
-
+        
+        self.root_folder.mkdir(exist_ok=True)
         # TODO: Save hyperparams in some config.json 
         # Also save start and last update time 
         
@@ -79,5 +81,8 @@ class Experiment:
                 use_rslora = False,  # We support rank stabilized LoRA
                 loftq_config = None, # And LoftQ
             )
+        elif self.exp_type == 'eval':
+            print('Activating faster inference with unsloth')
+            FastLanguageModel.for_inference(model)
 
         return model, tokenizer
