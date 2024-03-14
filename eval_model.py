@@ -83,7 +83,7 @@ experiment = Experiment(
 last_sample = 0
 for file in experiment.root_folder.iterdir():
     if file.stem.startswith('results_0'):
-        last_sample = int(file.stem.split('_')[-1])
+        last_sample = max(last_sample, int(file.stem.split('_')[-1]))
 
 model, tokenizer = experiment.get_unsloth_model()
 prompts = [
@@ -98,7 +98,7 @@ if last_sample > 0:
         sample_results = json.load(temp_results_file)
 
 # If this is too big we OOM for some reason...
-PROMPT_BATCH_SIZE = 25
+PROMPT_BATCH_SIZE = 5
 PROMPT_BATCHES = (len(prompts) + PROMPT_BATCH_SIZE - 1) // PROMPT_BATCH_SIZE
 SAVE_BATCHES = 5
 
@@ -109,7 +109,7 @@ print("STARTING EVAL")
 for prompt_batch_idx in tqdm(range(first_batch, PROMPT_BATCHES), desc='Generating batches'):
     prompt_batch = prompts[prompt_batch_idx * PROMPT_BATCH_SIZE: (prompt_batch_idx + 1) * PROMPT_BATCH_SIZE]
     inputs = tokenizer(prompt_batch, return_tensors = "pt", padding=True, truncation=True, max_length=8192).to('cuda')
-    outputs = model.generate(**inputs, max_new_tokens=1024, use_cache=True, pad_token_id=tokenizer.eos_token_id)
+    outputs = model.generate(**inputs, max_new_tokens=1024, pad_token_id=tokenizer.eos_token_id)
     decoded_outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
     for seq_idx, (prompt, output) in enumerate(zip(prompts, decoded_outputs)):
         seq_id = prompt_batch_idx * PROMPT_BATCH_SIZE + seq_idx 
@@ -122,7 +122,7 @@ for prompt_batch_idx in tqdm(range(first_batch, PROMPT_BATCHES), desc='Generatin
             'stderr': compile_result.stderr.decode('utf-8')
         }
 
-    if len(sample_results) > 0 and len(sample_results) % (SAVE_BATCHES * PROMPT_BATCH_SIZE) == 0:
+    if len(sample_results) > 0 and (len(sample_results) - last_sample) % (SAVE_BATCHES * PROMPT_BATCH_SIZE) == 0:
         temp_path = experiment.root_folder.joinpath(f'results_0_{len(sample_results)}.json')
         print(f'Saving results to {temp_path}')
         with open(temp_path, 'w') as temp_results_file:
