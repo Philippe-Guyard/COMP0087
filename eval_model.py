@@ -8,6 +8,17 @@ from prompt_utils import make_prompt_template, parse_code, cut_text, make_prompt
 from compiler_utils import try_compile_cpp
 
 from tqdm import tqdm
+from transformers import HfArgumentParser
+
+@dataclass
+class EvaluationConfig:
+    model: str 
+    dataset_name: str 
+    seq_length: int 
+    max_new_tokens: int  
+    batch_size: int 
+    save_batches: int 
+    exp_name: Optional[str]
 
 @dataclass
 class Evaluation:
@@ -70,14 +81,17 @@ def get_prompt_templates(samples_path: Path, include_pd: bool = False):
             
     return prompt_templates  
 
+argparse = HfArgumentParser(EvaluationConfig)
+config: EvaluationConfig = argparse.parse_args_into_dataclasses()
+
 prompt_templates = get_prompt_templates('./samples_big.txt', False)
 
 experiment = Experiment(
-    model='experiments/dpo_mistral_sfted/final',
+    model=config.model,
     exp_type='eval',
-    seq_length=8192,
-    max_new_tokens=1024,
-    exp_name='eval_dpo_mistral'
+    seq_length=config.seq_length,
+    max_new_tokens=config.max_new_tokens,
+    exp_name=config.exp_name
 ) 
 
 last_sample = 0
@@ -97,16 +111,15 @@ if last_sample > 0:
     with open(temp_path) as temp_results_file:
         sample_results = json.load(temp_results_file)
 
-# If this is too big we OOM for some reason...
-PROMPT_BATCH_SIZE = 5
-PROMPT_BATCHES = (len(prompts) + PROMPT_BATCH_SIZE - 1) // PROMPT_BATCH_SIZE
-SAVE_BATCHES = 5
+PROMPT_BATCH_SIZE = config.batch_size
+SAVE_BATCHES = config.save_batches
 
+prompt_batches = (len(prompts) + PROMPT_BATCH_SIZE - 1) // PROMPT_BATCH_SIZE
 first_batch = last_sample // PROMPT_BATCH_SIZE
 print(f'Found existing results file with {last_sample} examples. Skipping {first_batch} batches')
 
 print("STARTING EVAL")
-for prompt_batch_idx in tqdm(range(first_batch, PROMPT_BATCHES), desc='Generating batches'):
+for prompt_batch_idx in tqdm(range(first_batch, prompt_batches), desc='Generating batches'):
     prompt_batch = prompts[prompt_batch_idx * PROMPT_BATCH_SIZE: (prompt_batch_idx + 1) * PROMPT_BATCH_SIZE]
     inputs = tokenizer(prompt_batch, return_tensors = "pt", padding=True, truncation=True, max_length=8192).to('cuda')
     outputs = model.generate(**inputs, max_new_tokens=1024, pad_token_id=tokenizer.eos_token_id)
