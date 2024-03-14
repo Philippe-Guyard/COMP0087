@@ -8,6 +8,8 @@ from transformers import PreTrainedTokenizer
 
 from unsloth import FastLanguageModel
 
+from prompt_utils import parse_code
+
 EXPERIMENTS_ROOT = Path('./experiments')
 
 # 4bit pre quantized models we support for 4x faster downloading + no OOMs.
@@ -72,9 +74,7 @@ class Experiment:
                     print('Invalid option:', action)
         
         self.root_folder.mkdir(exist_ok=True)
-        # TODO: Save hyperparams in some config.json 
-        # Also save start and last update time 
-        
+
     def get_unsloth_model(self) -> Tuple[FastLanguageModel, PreTrainedTokenizer]:
         print(f"HF_HOME: {os.environ.get('HF_HOME')}")
         dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
@@ -105,3 +105,42 @@ class Experiment:
             FastLanguageModel.for_inference(model)
 
         return model, tokenizer
+
+@dataclass
+class Evaluation:
+    experiment: Experiment 
+    evaluation_id: str 
+    prompt: str 
+    output: str 
+    code_output: Optional[str] = field(default=None)
+
+    @property
+    def eval_folder(self) -> Path:
+        return self.experiment.root_folder.joinpath(f'./evals/{self.evaluation_id}')
+
+    @property 
+    def prompt_file_path(self) -> Path:
+        return self.eval_folder.joinpath('prompt.txt')
+
+    @property 
+    def output_file_path(self) -> Path:
+        return self.eval_folder.joinpath('output.txt')
+
+    @property 
+    def code_output_file_path(self) -> Path:
+        return self.eval_folder.joinpath('code_output.cpp')
+
+    def __post_init__(self):
+        self.eval_folder.mkdir(parents=True, exist_ok=True)
+
+        self.code_output = parse_code(self.output)
+
+        to_write = [
+            (self.prompt_file_path, self.prompt),
+            (self.output_file_path, self.output),
+            (self.code_output_file_path, self.code_output)
+        ]
+        for file_path, text in to_write:
+            with open(file_path, 'w') as file:
+                file.write(text)
+
