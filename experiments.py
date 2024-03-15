@@ -5,6 +5,7 @@ import shutil
 import os
 
 from transformers import PreTrainedTokenizer
+from datasets import load_dataset
 
 from unsloth import FastLanguageModel
 
@@ -39,7 +40,11 @@ class NLPDataset:
         return self.get_path(subset).read_text().splitlines()
     
     def as_hf_dataset(self):
-        assert False, 'Not implemented'
+        assert self.dataset_type == 'samples', 'Not implemented'
+        return load_dataset('text', name=self.dataset_name, data_files={
+            'train': [self.get_path('train')],
+            'test':  [self.get_path('test')]
+        })
 
 @dataclass
 class Experiment:
@@ -76,7 +81,7 @@ class Experiment:
         
         self.root_folder.mkdir(exist_ok=True)
 
-    def get_unsloth_model(self) -> Tuple[FastLanguageModel, PreTrainedTokenizer]:
+    def get_unsloth_model(self, add_lora_adapters=True) -> Tuple[FastLanguageModel, PreTrainedTokenizer]:
         print(f"HF_HOME: {os.environ.get('HF_HOME')}")
         dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
         load_in_4bit = self.load_in_4_bit 
@@ -87,7 +92,7 @@ class Experiment:
             load_in_4bit = load_in_4bit,
         )
 
-        if self.exp_type == 'train':
+        if self.exp_type == 'train' and add_lora_adapters:
             model = FastLanguageModel.get_peft_model(
                 model,
                 r = self.lora_r, # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
