@@ -45,11 +45,12 @@ class NLPDataset:
 class Experiment:
     model: str 
     exp_type: Literal['train', 'eval']
-    seq_length: int 
+    seq_length: int
     max_new_tokens: Optional[int] = field(default=None) 
     lora_r: Optional[int] = field(default=None)
     lora_alpha: Optional[int] = field(default=None)
     exp_name: Optional[str] = field(default=None)
+    load_in_4_bit: Optional[bool] = field(default=True)
 
     @property
     def root_folder(self):
@@ -78,7 +79,7 @@ class Experiment:
     def get_unsloth_model(self) -> Tuple[FastLanguageModel, PreTrainedTokenizer]:
         print(f"HF_HOME: {os.environ.get('HF_HOME')}")
         dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
-        load_in_4bit = True # Use 4bit quantization to reduce memory usage. Can be False.
+        load_in_4bit = self.load_in_4_bit 
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name = self.model,
             max_seq_length = self.seq_length,

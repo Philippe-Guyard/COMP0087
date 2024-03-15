@@ -19,8 +19,9 @@ class EvaluationConfig:
     max_new_tokens: int  
     batch_size: int 
     save_batches: int
+    load_in_4_bit: bool = field(default=True)
     eval_subset: Optional[str] = field(default='test') 
-    exp_name: Optional[str]
+    exp_name: Optional[str] = field(default=None)
 
 def get_prompt_templates(samples_path: Path, include_pd: bool = False):
     prompt_templates = []
@@ -46,7 +47,7 @@ def get_prompt_templates(samples_path: Path, include_pd: bool = False):
     return prompt_templates  
 
 argparse = HfArgumentParser(EvaluationConfig)
-config: EvaluationConfig = argparse.parse_args_into_dataclasses()
+config: EvaluationConfig = argparse.parse_args_into_dataclasses()[0]
 print(f'Starting eval experiment with config: {config}')
 
 dataset = NLPDataset('samples', config.dataset_name)
@@ -56,10 +57,10 @@ experiment = Experiment(
     seq_length=config.seq_length,
     max_new_tokens=config.max_new_tokens,
     exp_name=config.exp_name,
-    dataset=dataset
+    load_in_4_bit=config.load_in_4_bit
 )
 with open(experiment.root_folder.joinpath('config.json'), 'w') as config_file:
-    json.dump(config.__dict__(), config_file)
+    json.dump(config.__dict__, config_file)
      
 prompt_templates = get_prompt_templates(dataset.get_path(config.eval_subset), False)
 
