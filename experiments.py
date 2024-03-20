@@ -56,6 +56,8 @@ class Experiment:
     lora_alpha: Optional[int] = field(default=None)
     exp_name: Optional[str] = field(default=None)
     load_in_4_bit: Optional[bool] = field(default=True)
+    example: bool = field(default=False)
+    problem_description: bool = field(default=False)
 
     @property
     def root_folder(self):
@@ -64,6 +66,12 @@ class Experiment:
     def __post_init__(self):
         if self.exp_name is None:
             self.exp_name = f'{self.exp_type}_{self.model.replace("/", "_")}_{self.seq_length}'
+            if(self.problem_description):
+                self.exp_name += "_pd"
+            if(self.example):
+                self.exp_name += "_1-shot"
+            if(not self.example):
+                self.exp_name += "_0-shot"
         if self.root_folder.exists():
             while True:
                 print(f'Experiment {self.exp_name} already exists. Please choose an appropriate action:')
@@ -90,7 +98,11 @@ class Experiment:
             max_seq_length = self.seq_length,
             dtype = dtype,
             load_in_4bit = load_in_4bit,
+
+            # output_hidden_states = True,
         )
+
+        # model.config.output_hidden_states = True
 
         if self.exp_type == 'train' and add_lora_adapters:
             model = FastLanguageModel.get_peft_model(
@@ -105,6 +117,8 @@ class Experiment:
                 random_state = 3407,
                 use_rslora = False,  # We support rank stabilized LoRA
                 loftq_config = None, # And LoftQ
+
+                # output_hidden_states = True,
             )
         elif self.exp_type == 'eval':
             print('Activating faster inference with unsloth')

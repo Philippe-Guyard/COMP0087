@@ -4,7 +4,7 @@ from pathlib import Path
 import json 
 
 from experiments import Evaluation, Experiment, NLPDataset
-from prompt_utils import make_prompt_template, parse_code, cut_text, make_prompt_template_pd, parse_pd_html, make_simple_prompt_template
+from prompt_utils import make_prompt_template, parse_code, cut_text, make_prompt_template_pd, parse_pd_html, make_simple_prompt_template, make_model_prompt_template
 from compiler_utils import try_compile_cpp
 
 from tqdm import tqdm
@@ -22,8 +22,11 @@ class EvaluationConfig:
     load_in_4_bit: bool = field(default=True)
     eval_subset: Optional[str] = field(default='test') 
     exp_name: Optional[str] = field(default=None)
+    example: bool = field(default=False)
+    problem_description: bool = field(default=False)
+    chat : bool = field(default=True)
 
-def get_prompt_templates(samples_path: Path, include_pd: bool = False):
+def get_prompt_templates(samples_path: Path, model_name: str, include_pd: bool = False, include_example: bool = False):
     prompt_templates = []
     with open(samples_path) as samples_file:
         samples = samples_file.readlines()
@@ -32,15 +35,12 @@ def get_prompt_templates(samples_path: Path, include_pd: bool = False):
             with open(sample.strip('\n')) as f:
                 text = f.read()
                 code_sample = cut_text(text)
-            
-            if(include_pd):
-                problem_id = sample.strip('\n').split("/")[-3]
-                pd_path = f"../Project_CodeNet/problem_descriptions/{problem_id}.html"
-                pd = parse_pd_html(pd_path)
 
-                template = make_simple_prompt_template(code_sample, pd)
-            else:
-                template = make_prompt_template(code_sample)
+            problem_id = sample.strip('\n').split("/")[-3]
+            pd_path = f"../Project_CodeNet/problem_descriptions/{problem_id}.html"
+            pd = parse_pd_html(pd_path)
+
+            template = make_model_prompt_template(code_sample, pd, model_name, include_pd, include_example)
 
             prompt_templates.append(template)
             
@@ -51,18 +51,22 @@ config: EvaluationConfig = argparse.parse_args_into_dataclasses()[0]
 print(f'Starting eval experiment with config: {config}')
 
 dataset = NLPDataset('samples', config.dataset_name)
+
 experiment = Experiment(
     model=config.model,
     exp_type='eval',
     seq_length=config.seq_length,
     max_new_tokens=config.max_new_tokens,
     exp_name=config.exp_name,
-    load_in_4_bit=config.load_in_4_bit
+    load_in_4_bit=config.load_in_4_bit,
+    example=config.example,
+    problem_description=config.problem_description
 )
+
 with open(experiment.root_folder.joinpath('config.json'), 'w') as config_file:
     json.dump(config.__dict__, config_file)
      
-prompt_templates = get_prompt_templates(dataset.get_path(config.eval_subset), False)
+prompt_templates = get_prompt_templates(dataset.get_path(config.eval_subset), config.model, config.problem_description, config.example)
 
 last_sample = 0
 for file in experiment.root_folder.iterdir():
@@ -70,10 +74,15 @@ for file in experiment.root_folder.iterdir():
         last_sample = max(last_sample, int(file.stem.split('_')[-1]))
 
 model, tokenizer = experiment.get_unsloth_model()
-prompts = [
-    tokenizer.apply_chat_template(template, tokenize=False)
-    for template in prompt_templates 
-]
+
+if(config.chat):
+    prompts = [
+        tokenizer.apply_chat_template(template, tokenize=False)
+        for template in prompt_templates 
+    ]
+else:
+    prompts = prompt_templates
+
 
 sample_results = dict()
 if last_sample > 0:

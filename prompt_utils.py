@@ -107,7 +107,50 @@ int main() {{
     },
     ]
 
+def make_model_prompt_template(code_snippet: str, pd: str, model_name: str, include_pd: bool, include_example: bool):
+    model_list = [
+        "unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 
+        "unsloth/codellama-7b-bnb-4bit",
+        "unsloth/gemma-7b-bnb-4bit",
+        ]
+    if(model_name not in model_list):
+        #Returning default
+        return make_prompt_template(code_snippet)
+    
+    if model_name == model_list[0]:
+      if(include_pd and include_example):
+          return make_prompt_template_pd(code_snippet, pd)
+      elif(include_pd and not include_example):
+          # TODO: This configuration is not implemented for mistral, suing default
+          return make_prompt_template_pd(code_snippet, pd)
+      elif(not include_pd and include_example):
+          return make_prompt_template(code_snippet)
+      else:
+          # TODO: This configuration is not implemented for mistral, suing default
+          return make_prompt_template_pd(code_snippet)
 
+    if model_name == model_list[1]:
+        if(include_pd and include_example):
+            # TODO: This configuration is not implemented for codellama, suing default
+            return make_codellama_prompt_example(code_snippet)
+        elif(include_pd and not include_example):
+            # TODO: This configuration is not implemented for codellama, suing default
+            return make_codellama_prompt(code_snippet)
+        elif(not include_pd and include_example):
+            return make_codellama_prompt_example(code_snippet)
+        else:
+            return make_codellama_prompt(code_snippet)
+    
+    if model_name == model_list[2]:
+        instruction = f"{baseInstructionTemplate()}"
+                        
+        if include_example:
+            instruction += f"\n{baseExampleTemplate()}"
+        if include_pd:
+            instruction += f"\n{baseCodeTaskDescription(pd)}"
+
+        return gemmaRegularPromptTemplate(instruction = instruction,  response="", code=incompleteCodeTemplate(code_snippet))
+        
 def make_alpaca_prompt_template(code_snippet: str):
     alpaca_prompt = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
@@ -142,6 +185,33 @@ int main() {{
 {}"""
     return [alpaca_prompt]
 
+def make_codellama_prompt_example(code_snippet):
+    prompt_template = """// Incomplete Example:
+
+//TODO: Finish the main() method
+#include <iostream>
+
+using namespace std; 
+
+int main() {
+    cout << "Hello, 
+
+//Complete Example:
+#include <iostream>
+
+using namespace std; 
+
+int main() {
+    cout << "Hello, World! << endl;
+}
+
+//TODO: Finish the main() method\n%s""" % (f"{code_snippet}")
+    return prompt_template
+
+def make_codellama_prompt(code_snippet):
+    prompt_template = """//TODO: Finish the main() method\n%s""" % (f"{code_snippet}")
+    return prompt_template
+
 def make_simple_prompt_template(code_snippet: str, pd: str):
     prompt_template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
@@ -153,7 +223,7 @@ def make_simple_prompt_template(code_snippet: str, pd: str):
 
 ### Response:
 {}"""
-    prompt_template = prompt_template.format("Complete the C++ prgoram", code_snippet, "")
+    #prompt_template = prompt_template.format("Complete the C++ prgoram", code_snippet, "")
     #return """You are a coding assistant. Complete this C++ code and give the completed version as output. Do not repeat yourself. Code: int main() {for(int rows=1;rows<10;rows++){for(int colm=1;colm<10;colm++){cout <<rows <<"x" <<colm<<"="<<rows*colm<<endl;} Completed Code:"""
     # lines = pd.splitlines() 
     # lines = '\n'.join('#' + line for line in lines)  
@@ -161,6 +231,7 @@ def make_simple_prompt_template(code_snippet: str, pd: str):
     # prompt_template = prompt_template.format(pd = lines, code_snippet=code_snippet)
     #prompt_template = ' '.join(line for line in prompt_template.splitlines())
     #prompt_template = prompt_template.replace('\t', ' ')
+    prompt_template = f"//TODO: Finish the main() method. Don't generate new functions or comments.\n{code_snippet}"
     print(prompt_template)
     return prompt_template
 def make_sft_example(txt: str):
@@ -201,3 +272,61 @@ def parse_pd_html(pd_path: str):
         text = re.sub(pattern, replacement, text)
 
     return text
+
+
+def gemmaRegularPromptTemplate(instruction: str, response: str, code: str):
+    #how to use:
+    # prompt = template.format(
+    # instruction="What should I do on a trip to Europe?",
+    # response="",
+    # )
+    # template = f"<bos>[Instruction]\n{instruction}\n[/Instruction]\n{code}\n[Response]\n{response}<eos>"
+    template = f"[Instruction]\n{instruction}\n[/Instruction]\n{code}\n[Response]\n{response}"
+    return template
+
+# def gemmaRegularInstructionTemplate(instruction: str):
+#     template = "Instruction:\n{instruction}\n\nResponse:\n"
+#     return template
+
+def incompleteCodeTemplate(code: str):
+    template = f"[C++]\n{code}\n[/C++]"
+    return template
+
+def baseCodeTaskDescription(description: str):
+    return f"[Code Problem Description]\n{description}\n[/Code Problem Description]"
+
+def baseInstructionTemplate():
+    InstructionString = """You are an assistant that helps users with writing compiler-friendly C++ programmes. Your outputs should be exclusively C++ programmes that can be compiled with C++17. 
+Complete the code given in the input to produce a valid C++ program. The code to complete will be delimited by [C++] and [/C++]. Your response will be delimited with [Response] and [/Response].
+"""
+    return InstructionString
+
+def baseExampleTemplate():
+    ExampleString = """
+[Example]
+
+[C++]
+#include <iostream>
+
+using namespace std; 
+
+int main() {
+    cout << "Hello, 
+[/C++]
+
+[Response]
+#include <iostream>
+
+using namespace std; 
+
+int main() {
+    cout << "Hello, World! << endl;
+}
+[/Response]
+
+[/Example]
+"""
+    return ExampleString
+
+
+
