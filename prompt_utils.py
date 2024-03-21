@@ -105,6 +105,11 @@ def _codellama_infill_prompt_template(txt: str) -> str:
     #   <FILLME>
     # }
     # Do not require anything extra. Just return the text 
+    # NEED TO ADHERE TO THE FOLLOWING FORMAT: 
+    # <PRE> {prefix} <SUF> {suffix} <MID>
+    # txt = txt.replace(PromptHelper.INFILL_TOKEN, "<SUF>")
+    # txt = "<PRE>\n" + txt + "\n<MID>"
+    # print(txt)
     return txt 
 
 def _codellama_infill_make_sft_example(txt: str) -> str:
@@ -120,7 +125,7 @@ class PromptHelper:
     cut_tokens: Optional[int]
     cut_middle_lines: Optional[int]
 
-    INFILL_TOKEN = '<FILLME>'
+    INFILL_TOKEN = '<FILL_ME>'
 
     def __init__(self, cut_type: CuttingType, base_model: BaseModel, 
                  include_example: bool = True, include_pd: bool = False,
@@ -143,7 +148,7 @@ class PromptHelper:
             assert self.include_pd is False, 'Not implemented'
         elif self.base_model == BaseModel.CODELLAMA:
             assert self.include_example is False and self.include_pd is False, 'Not implemented'
-            assert self.cut_type == CuttingType.CUT_MIDDLE
+            # assert self.cut_type == CuttingType.CUT_MIDDLE
         elif self.base_model == BaseModel.GEMMA:
             assert False, 'Not implemented'
 
@@ -155,18 +160,30 @@ class PromptHelper:
         elif self.cut_type == CuttingType.CUT_LAST_N:
             assert False, 'Not implemented'
         elif self.cut_type == CuttingType.CUT_MIDDLE:
-            assert False, 'Not implemented'
-            lines = txt.splitlines()
-            # Delete empty lines from end 
-            for i in range(len(lines) - 1, -1, -1):
-                if len(lines[i]) == 0:
-                    lines.pop(-1)
+            lines = txt.splitlines()  
+            num_lines = len(lines)
+            num_to_remove = int(self.cut_ratio * num_lines)
 
-            # Remove N - 1 lines from the end 
-            for _ in range(self.cut_middle_lines - 1):
-                lines.pop(-1) 
-            lines[-1] = PromptHelper.INFILL_TOKEN  
-            return lines.join('\n')
+            # Handle edge cases (removing all or no lines)
+            if num_to_remove == 0:
+                return txt
+            elif num_to_remove == num_lines:
+                return '' 
+
+            start_idx = num_lines // 2 - num_to_remove // 2
+            end_idx = start_idx + num_to_remove
+            return '\n'.join(lines[:start_idx] + [PromptHelper.INFILL_TOKEN] + lines[end_idx:])
+            #lines = txt.splitlines()
+            # # Delete empty lines from end 
+            # for i in range(len(lines) - 1, -1, -1):
+            #     if len(lines[i]) == 0:
+            #         lines.pop(-1)
+
+            # # Remove N - 1 lines from the end 
+            # for _ in range(self.cut_middle_lines - 1):
+            #     lines.pop(-1) 
+            # lines[-1] = PromptHelper.INFILL_TOKEN  
+            # return lines.join('\n')
 
     def make_prompt(self, cut_code: str) -> str | ChatTemplate:
         if self.base_model == BaseModel.MISTRAL_INSTRUCT:

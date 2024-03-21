@@ -25,7 +25,7 @@ class EvaluationConfig:
     example: bool = field(default=False)
     problem_description: bool = field(default=False)
     base_model: Optional[str] = field(default=None)
-    cut_type: Optional[str] = field(default=str(CuttingType.CUT_LAST_PCT))
+    cut_type: Optional[str] = field(default=CuttingType.CUT_LAST_PCT.value)
 
 def get_prompt_templates(samples_path: Path, prompt_helper: PromptHelper) -> List[str | ChatTemplate]:
     prompt_templates = []
@@ -53,13 +53,13 @@ config: EvaluationConfig = argparse.parse_args_into_dataclasses()[0]
 print(f'Starting eval experiment with config: {config}')
 
 if config.base_model is None:
-    config.base_model = str(BaseModel.parse(config.model))    
+    config.base_model = BaseModel.parse(config.model).value    
     print(f'Automatically detected base model: {config.base_model}')
 
 cut_type = CuttingType(config.cut_type)
 prompt_helper = PromptHelper(
     cut_type=cut_type, 
-    base_model=config.base_model, 
+    base_model=BaseModel(config.base_model), 
     include_example=config.example, 
     include_pd=config.problem_description
 )
