@@ -1,14 +1,12 @@
 from bs4 import BeautifulSoup
 import re
 from pathlib import Path
+from enum import Enum
 
-def cut_text(txt: str, cut_ratio=0.1):
-    '''
-    Cut cut_ratio of the text from the end 
-    '''
-    stripped = txt.strip('\n ')
-    end_idx = max(int(cut_ratio * len(stripped)), 1)
-    return stripped[:-end_idx]
+import json
+from typing import List, Dict, Optional 
+
+ChatTemplate = List[Dict[str, str]]
 
 def find_nth(haystack: str, needle: str, n: int) -> int:
     start = haystack.find(needle)
@@ -17,18 +15,48 @@ def find_nth(haystack: str, needle: str, n: int) -> int:
         n -= 1
     return start
 
-def parse_code(output: str, n_examples=1):
-    # NOTE: Assume the code is between the 8th and 9th ``` (1 for sys prompts, 4 for the example, 2 for the input)
-    code_delimiter = '#####'
-    code_start_idx = find_nth(output, code_delimiter, 8) + len(code_delimiter)
-    code_end_idx   = find_nth(output, code_delimiter, 9) 
+class CuttingType(Enum):
+    CUT_LAST_PCT = 'cut_last_pct' # Delete last x% of the text 
+    CUT_LAST_N   = 'cut_last_n'   # Delete last x tokens from the text 
+    CUT_MIDDLE   = 'cut_infill'   # Delete x lines from middle 
 
-    if(code_start_idx == -1 or code_end_idx == -1):
-        return output
-    
-    return output[code_start_idx : code_end_idx]
+class BaseModel(Enum):
+    MISTRAL_INSTRUCT = 'mistral_instruct'
+    CODELLAMA        = 'codellama'
+    GEMMA            = 'gemma'
 
-def make_prompt_template(truncated_txt: str):
+    @staticmethod
+    def parse(model_string: str):
+        model_is_local = model_string.startswith('.')
+        base_model_str = model_string
+        if model_is_local:
+            config_path = Path(model_string, 'adapter_config.json')
+            with open(config_path) as config_file:
+                cfg = json.load(config_file)
+                base_model_str = cfg['base_model_name_or_path']
+        
+        def is_mistral_instruct(name: str):
+            return 'mistral' in name and 'instruct' in name 
+
+        def is_codellama(name: str):
+            return 'codellama' in name 
+
+        def is_gemma(name: str):
+            return 'gemma' in name 
+
+        models_map = [
+            (BaseModel.GEMMA, is_gemma),
+            (BaseModel.MISTRAL_INSTRUCT, is_mistral_instruct),
+            (BaseModel.CODELLAMA, is_codellama),
+        ]
+
+        for base_model, filter_fn in models_map:
+            if filter_fn(base_model_str):
+                return base_model
+        
+        assert False, 'Unknown model'
+
+def _mistral_inst_make_prompt_template(txt: str):
     return [
     {
         'role': 'user',
@@ -60,9 +88,136 @@ int main() {{
     },
     {
         'role': 'user',
-        'content': '#####\n' + truncated_txt + '\n#####\n'
+        'content': '#####\n' + txt + '\n#####\n'
     },
     ]
+
+def _mistral_add_sft_example(prompt_template: ChatTemplate, txt: str):
+    prompt_template.append({
+        'role': 'assistant',
+        'content': '#####\n' + txt + '\n#####'  
+    })
+    return prompt_template
+
+def _codellama_infill_prompt_template(txt: str) -> str:
+    # Templates like 
+    # int main() {
+    #   <FILLME>
+    # }
+    # Do not require anything extra. Just return the text 
+    return txt 
+
+def _codellama_infill_make_sft_example(txt: str) -> str:
+    # Just train on the raw code 
+    return txt 
+
+class PromptHelper:
+    base_model: BaseModel
+    cut_type: CuttingType
+    include_example: bool 
+    include_pd: bool         
+    cut_ratio: Optional[float]
+    cut_tokens: Optional[int]
+    cut_middle_lines: Optional[int]
+
+    INFILL_TOKEN = '<FILLME>'
+
+    def __init__(self, cut_type: CuttingType, base_model: BaseModel, 
+                 include_example: bool = True, include_pd: bool = False,
+                 cut_ratio: float = 0.1, cut_tokens: int = 25, cut_middle_lines: int = 5) -> None:
+        self.cut_type = cut_type
+        self.base_model = base_model
+        self.include_example = include_example
+        self.include_pd = include_pd
+        self.cut_ratio = cut_ratio
+        self.cut_tokens = cut_tokens
+        self.cut_middle_lines = cut_middle_lines
+
+        self._check_implemented()
+
+    def _check_implemented(self):
+        assert self.cut_type != CuttingType.CUT_LAST_N, 'Not implemented'
+        assert not self.include_pd
+
+        if self.base_model == BaseModel.MISTRAL_INSTRUCT:
+            assert self.include_pd is False, 'Not implemented'
+        elif self.base_model == BaseModel.CODELLAMA:
+            assert self.include_example is False and self.include_pd is False, 'Not implemented'
+            assert self.cut_type == CuttingType.CUT_MIDDLE
+        elif self.base_model == BaseModel.GEMMA:
+            assert False, 'Not implemented'
+
+    def cut_text(self, txt: str) -> str:
+        if self.cut_type == CuttingType.CUT_LAST_PCT:
+            stripped = txt.strip('\n ')
+            end_idx = max(int(self.cut_ratio * len(stripped)), 1)
+            return stripped[:-end_idx]
+        elif self.cut_type == CuttingType.CUT_LAST_N:
+            assert False, 'Not implemented'
+        elif self.cut_type == CuttingType.CUT_MIDDLE:
+            assert False, 'Not implemented'
+            lines = txt.splitlines()
+            # Delete empty lines from end 
+            for i in range(len(lines) - 1, -1, -1):
+                if len(lines[i]) == 0:
+                    lines.pop(-1)
+
+            # Remove N - 1 lines from the end 
+            for _ in range(self.cut_middle_lines - 1):
+                lines.pop(-1) 
+            lines[-1] = PromptHelper.INFILL_TOKEN  
+            return lines.join('\n')
+
+    def make_prompt(self, cut_code: str) -> str | ChatTemplate:
+        if self.base_model == BaseModel.MISTRAL_INSTRUCT:
+            return _mistral_inst_make_prompt_template(cut_code)
+        elif self.base_model == BaseModel.CODELLAMA:
+            return _codellama_infill_prompt_template(cut_code)
+        elif self.base_model == BaseModel.GEMMA:
+            assert False, 'Not implemented'
+
+    def make_sft_example(self, code: str) -> str | ChatTemplate:
+        if self.base_model == BaseModel.MISTRAL_INSTRUCT:
+            cut_code = self.cut_text(code)
+            prompt_template = self.make_prompt(cut_code)
+            return _mistral_add_sft_example(prompt_template, code)
+        elif self.base_model == BaseModel.CODELLAMA:
+            return _codellama_infill_make_sft_example(code)
+        elif self.base_model == BaseModel.GEMMA:
+            assert False, 'Not implemented'
+
+    def parse_code(self, output: str) -> str:
+        if self.base_model == BaseModel.MISTRAL_INSTRUCT:
+            code_delimiter = '#####'
+            example_ind = 1 if self.include_example else 0
+            delimiters_before = 1 + 4 * example_ind + 2 
+            code_start_idx = find_nth(output, code_delimiter, delimiters_before) + len(code_delimiter)
+            code_end_idx   = find_nth(output, code_delimiter, delimiters_before + 1) 
+
+            if code_start_idx == -1 or code_end_idx == -1:
+                return output
+            
+            return output[code_start_idx : code_end_idx]          
+        elif self.base_model == BaseModel.CODELLAMA:
+            return output
+        elif self.base_model == BaseModel.GEMMA:
+            assert False 
+
+# NOTE: Everything below is only for backwards compat 
+
+def parse_code(output: str, n_examples=1):
+    # NOTE: Assume the code is between the 8th and 9th ``` (1 for sys prompts, 4 for the example, 2 for the input)
+    code_delimiter = '#####'
+    code_start_idx = find_nth(output, code_delimiter, 8) + len(code_delimiter)
+    code_end_idx   = find_nth(output, code_delimiter, 9) 
+
+    if(code_start_idx == -1 or code_end_idx == -1):
+        return output
+    
+    return output[code_start_idx : code_end_idx]
+
+def make_prompt_template(txt: str):
+    return _mistral_inst_make_prompt_template(txt)
 
 def make_prompt_template_pd(truncated_txt: str, pd: str):
     return [
@@ -233,14 +388,6 @@ def make_simple_prompt_template(code_snippet: str, pd: str):
     #prompt_template = prompt_template.replace('\t', ' ')
     prompt_template = f"//TODO: Finish the main() method. Don't generate new functions or comments.\n{code_snippet}"
     print(prompt_template)
-    return prompt_template
-def make_sft_example(txt: str):
-    truncated_txt = cut_text(txt)
-    prompt_template = make_prompt_template(truncated_txt)
-    prompt_template.append({
-        'role': 'assistant',
-        'content': '#####\n' + txt + '\n#####'  
-    })
     return prompt_template
 
 def parse_pd_html(pd_path: str):
