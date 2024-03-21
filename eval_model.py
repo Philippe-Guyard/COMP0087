@@ -117,7 +117,8 @@ with torch.no_grad():
         decoded_outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
         for seq_idx, (prompt, output) in enumerate(zip(prompts, decoded_outputs)):
             seq_id = prompt_batch_idx * PROMPT_BATCH_SIZE + seq_idx 
-            evaluation = Evaluation(experiment, seq_id, prompt, output)
+            code_output = prompt_helper.parse_code(output)
+            evaluation = Evaluation(experiment, seq_id, prompt, output, code_output)
             compile_result = try_compile_cpp(src_path=evaluation.code_output_file_path)
             sample_status = "Good" if compile_result.returncode == 0 else "Bad"
             # print(f'Sample {seq_id} is {sample_status}')

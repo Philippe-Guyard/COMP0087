@@ -132,7 +132,7 @@ class Evaluation:
     evaluation_id: str 
     prompt: str 
     output: str 
-    code_output: Optional[str] = field(default=None)
+    code_output: str 
 
     @property
     def eval_folder(self) -> Path:
@@ -152,8 +152,6 @@ class Evaluation:
 
     def __post_init__(self):
         self.eval_folder.mkdir(parents=True, exist_ok=True)
-
-        self.code_output = parse_code(self.output)
 
         to_write = [
             (self.prompt_file_path, self.prompt),
