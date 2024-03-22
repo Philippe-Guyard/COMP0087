@@ -110,15 +110,21 @@ print(f'Found existing results file with {last_sample} examples. Skipping {first
 
 # NOTE: Not sure if the no_grad helps but at this point I'm hopeless and trying anything to reduce memory usage
 with torch.no_grad():
+
+    
     for prompt_batch_idx in tqdm(range(first_batch, prompt_batches), desc='Generating batches'):
         prompt_batch = prompts[prompt_batch_idx * PROMPT_BATCH_SIZE: (prompt_batch_idx + 1) * PROMPT_BATCH_SIZE]
-        inputs = tokenizer(prompt_batch, return_tensors = "pt", padding=True, truncation=True, max_length=config.seq_length).to('cuda')
-        outputs = model.generate(**inputs, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.eos_token_id)
-        decoded_outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        for seq_idx, (prompt, output) in enumerate(zip(prompts, decoded_outputs)):
+
+        #NOTE: processing each prompts in a batch individually
+        for seq_idx, prompt in enumerate(prompt_batch):
+            inputs = tokenizer(prompt, return_tensors = "pt", padding=True, truncation=True, max_length=config.seq_length).to('cuda')
+            input_ids = inputs["input_ids"]
+            output = model.generate(**inputs, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.eos_token_id)
+            decoded_output = tokenizer.batch_decode(output[:, input_ids.shape[1]:], skip_special_tokens=True)[0]
+
             seq_id = prompt_batch_idx * PROMPT_BATCH_SIZE + seq_idx 
-            code_output = prompt_helper.parse_code(output)
-            evaluation = Evaluation(experiment, seq_id, prompt, output, code_output)
+            code_output = prompt_helper.parse_code(prompt, prompt + decoded_output, decoded_output)
+            evaluation = Evaluation(experiment, seq_id, prompt, prompt + decoded_output, code_output)
             compile_result = try_compile_cpp(src_path=evaluation.code_output_file_path)
             sample_status = "Good" if compile_result.returncode == 0 else "Bad"
             # print(f'Sample {seq_id} is {sample_status}')
@@ -129,13 +135,33 @@ with torch.no_grad():
                 'Status': sample_status,
             }
 
+        # NOTE: processing a whole batch
+        # inputs = tokenizer(prompt_batch, return_tensors = "pt", padding=True, truncation=True, max_length=config.seq_length).to('cuda')
+        # input_ids = inputs["input_ids"]
+        # outputs = model.generate(**inputs, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.eos_token_id)
+        # decoded_outputs = tokenizer.batch_decode(outputs[:, input_ids.shape[1]:], skip_special_tokens=True)
+
+        # for seq_idx, (prompt, output) in enumerate(zip(prompts, decoded_outputs)):
+        #     seq_id = prompt_batch_idx * PROMPT_BATCH_SIZE + seq_idx 
+        #     code_output = prompt_helper.parse_code(prompt, prompt + output, output)
+        #     evaluation = Evaluation(experiment, seq_id, prompt, prompt + output, code_output)
+        #     compile_result = try_compile_cpp(src_path=evaluation.code_output_file_path)
+        #     sample_status = "Good" if compile_result.returncode == 0 else "Bad"
+        #     # print(f'Sample {seq_id} is {sample_status}')
+        #     with open(evaluation.eval_folder.joinpath('stderr.txt'), 'wb') as stderr_file:
+        #         stderr_file.write(compile_result.stderr) 
+
+        #     sample_results[seq_id] = {
+        #         'Status': sample_status,
+        #     }
+
         if len(sample_results) > 0 and (len(sample_results) - last_sample) % (SAVE_BATCHES * PROMPT_BATCH_SIZE) == 0:
             temp_path = experiment.root_folder.joinpath(f'results_0_{len(sample_results)}.json')
             print(f'Saving results to {temp_path}')
             with open(temp_path, 'w') as temp_results_file:
                 json.dump(sample_results, temp_results_file)
         
-        del inputs, outputs, decoded_outputs
+        del inputs, output, decoded_output
         torch.cuda.empty_cache()
 
 with open(experiment.root_folder.joinpath('results.json'), 'w') as results_file:

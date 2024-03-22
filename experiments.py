@@ -42,8 +42,8 @@ class NLPDataset:
     def as_hf_dataset(self):
         assert self.dataset_type == 'samples', 'Not implemented'
         return load_dataset('text', name=self.dataset_name, data_files={
-            'train': [self.get_path('train')],
-            'test':  [self.get_path('test')]
+            'train': [self.get_path('train').as_posix()],
+            'test':  [self.get_path('test').as_posix()]
         })
 
 @dataclass
