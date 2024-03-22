@@ -9,7 +9,7 @@ from queue import SimpleQueue
 from bs4 import BeautifulSoup
 import langdetect
 
-CODENET_ROOT = Path('./Project_CodeNet/')
+CODENET_ROOT = Path('../Project_CodeNet/')
 
 @dataclass 
 class CodeNetSolution:

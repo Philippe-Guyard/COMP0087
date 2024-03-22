@@ -5,7 +5,7 @@ from compiler_utils import try_compile_cpp
 from experiments import Experiment, EXPERIMENTS_ROOT
 from prompt_utils import make_sft_example
 
-exp_name = 'eval_mistral_sft'
+exp_name = 'eval_unsloth_mistral-7b-instruct-v0.2-bnb-4bit_8192'
 exp_root = EXPERIMENTS_ROOT.joinpath(exp_name)
 samples_file_path = './samples_big.txt'
 samples = []
