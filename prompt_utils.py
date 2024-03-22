@@ -61,21 +61,21 @@ def _mistral_inst_make_prompt_template(txt: str):
     {
         'role': 'user',
         'content': '''You are an assistant that helps users with writing compiler-friendly C++ programmes. Your outputs should be exclusively C++ programmes that can be compiled with C++17.
-Please make sure to delimit your code with #####. Here is an example:
-#####
+Please make sure to delimit your code with ```. Here is an example:
+```cpp
 #include <iostream>
 
 using namespace std; 
 
 int main() {{
     cout << "Hello, 
-#####
+```
 '''
     },
     {
         'role': 'assistant',
         'content': '''
-#####
+```cpp
 #include <iostream>
 
 using namespace std; 
@@ -83,19 +83,19 @@ using namespace std;
 int main() {{
     cout << "Hello, World! << endl;
 }}
-#####
+```
 '''
     },
     {
         'role': 'user',
-        'content': '#####\n' + txt + '\n#####\n'
+        'content': '```cpp\n' + txt + '\n```\n'
     },
     ]
 
 def _mistral_add_sft_example(prompt_template: ChatTemplate, txt: str):
     prompt_template.append({
         'role': 'assistant',
-        'content': '#####\n' + txt + '\n#####'  
+        'content': '```cpp\n' + txt + '\n```'  
     })
     return prompt_template
 
@@ -105,10 +105,6 @@ def _codellama_infill_prompt_template(txt: str) -> str:
     #   <FILLME>
     # }
     # Do not require anything extra. Just return the text 
-    # NEED TO ADHERE TO THE FOLLOWING FORMAT: 
-    # <PRE> {prefix} <SUF> {suffix} <MID>
-    # txt = txt.replace(PromptHelper.INFILL_TOKEN, "<SUF>")
-    # txt = "<PRE>\n" + txt + "\n<MID>"
     # print(txt)
     return txt 
 
@@ -150,7 +146,7 @@ class PromptHelper:
             assert self.include_example is False and self.include_pd is False, 'Not implemented'
             # assert self.cut_type == CuttingType.CUT_MIDDLE
         elif self.base_model == BaseModel.GEMMA:
-            assert False, 'Not implemented'
+            assert self.cut_type == CuttingType.CUT_LAST_PCT
 
     def cut_text(self, txt: str) -> str:
         if self.cut_type == CuttingType.CUT_LAST_PCT:
@@ -173,17 +169,6 @@ class PromptHelper:
             start_idx = num_lines // 2 - num_to_remove // 2
             end_idx = start_idx + num_to_remove
             return '\n'.join(lines[:start_idx] + [PromptHelper.INFILL_TOKEN] + lines[end_idx:])
-            #lines = txt.splitlines()
-            # # Delete empty lines from end 
-            # for i in range(len(lines) - 1, -1, -1):
-            #     if len(lines[i]) == 0:
-            #         lines.pop(-1)
-
-            # # Remove N - 1 lines from the end 
-            # for _ in range(self.cut_middle_lines - 1):
-            #     lines.pop(-1) 
-            # lines[-1] = PromptHelper.INFILL_TOKEN  
-            # return lines.join('\n')
 
     def make_prompt(self, cut_code: str) -> str | ChatTemplate:
         if self.base_model == BaseModel.MISTRAL_INSTRUCT:
@@ -191,7 +176,7 @@ class PromptHelper:
         elif self.base_model == BaseModel.CODELLAMA:
             return _codellama_infill_prompt_template(cut_code)
         elif self.base_model == BaseModel.GEMMA:
-            assert False, 'Not implemented'
+            return _codellama_infill_prompt_template(cut_code)
 
     def make_sft_example(self, code: str) -> str | ChatTemplate:
         if self.base_model == BaseModel.MISTRAL_INSTRUCT:
@@ -201,24 +186,33 @@ class PromptHelper:
         elif self.base_model == BaseModel.CODELLAMA:
             return _codellama_infill_make_sft_example(code)
         elif self.base_model == BaseModel.GEMMA:
-            assert False, 'Not implemented'
+            return _codellama_infill_make_sft_example(code)
 
-    def parse_code(self, output: str) -> str:
+    def parse_code(self, prompt: str, output: str, new_tokens: str) -> str:
         if self.base_model == BaseModel.MISTRAL_INSTRUCT:
-            code_delimiter = '#####'
+            code_delimiter = '```'
             example_ind = 1 if self.include_example else 0
             delimiters_before = 1 + 4 * example_ind + 2 
-            code_start_idx = find_nth(output, code_delimiter, delimiters_before) + len(code_delimiter)
-            code_end_idx   = find_nth(output, code_delimiter, delimiters_before + 1) 
+            # code_start_idx = find_nth(output, code_delimiter, delimiters_before + 1) + len(code_delimiter)
+            # code_end_idx   = find_nth(output, code_delimiter, delimiters_before + 2) 
+            code_start_idx = find_nth(output, code_delimiter, 8) + len(code_delimiter) + 3
+            code_end_idx   = find_nth(output, code_delimiter, 9)
+
 
             if code_start_idx == -1 or code_end_idx == -1:
                 return output
             
             return output[code_start_idx : code_end_idx]          
         elif self.base_model == BaseModel.CODELLAMA:
-            return output
+            if(self.cut_type == CuttingType.CUT_LAST_PCT):
+                return output
+            if(self.cut_type == CuttingType.CUT_MIDDLE):
+                return prompt.replace(PromptHelper.INFILL_TOKEN, new_tokens)
         elif self.base_model == BaseModel.GEMMA:
-            assert False 
+            if(self.cut_type == CuttingType.CUT_LAST_PCT):
+                return output
+            if(self.cut_type == CuttingType.CUT_MIDDLE):
+                return prompt.replace(PromptHelper.INFILL_TOKEN, new_tokens)
 
 # NOTE: Everything below is only for backwards compat 
 
@@ -437,7 +431,6 @@ def parse_pd_html(pd_path: str):
 
     return text
 
-
 def gemmaRegularPromptTemplate(instruction: str, response: str, code: str):
     #how to use:
     # prompt = template.format(
@@ -447,10 +440,6 @@ def gemmaRegularPromptTemplate(instruction: str, response: str, code: str):
     # template = f"<bos>[Instruction]\n{instruction}\n[/Instruction]\n{code}\n[Response]\n{response}<eos>"
     template = f"[Instruction]\n{instruction}\n[/Instruction]\n{code}\n[Response]\n{response}"
     return template
-
-# def gemmaRegularInstructionTemplate(instruction: str):
-#     template = "Instruction:\n{instruction}\n\nResponse:\n"
-#     return template
 
 def incompleteCodeTemplate(code: str):
     template = f"[C++]\n{code}\n[/C++]"
