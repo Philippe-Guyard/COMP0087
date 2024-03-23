@@ -80,7 +80,7 @@ experiment = Experiment(
 with open(experiment.root_folder.joinpath('config.json'), 'w') as config_file:
     json.dump(config.__dict__, config_file)
      
-prompt_templates = get_prompt_templates(dataset.get_path(config.eval_subset), prompt_helper) 
+prompt_templates = get_prompt_templates(dataset.get_path(config.sample_subset), prompt_helper) 
 
 last_sample = 0
 for file in experiment.root_folder.iterdir():
@@ -100,19 +100,16 @@ if last_sample > 0:
     with open(temp_path) as temp_results_file:
         sample_results = json.load(temp_results_file)
 
-PROMPT_BATCH_SIZE = config.batch_size
-SAVE_BATCHES = config.save_batches
+last_sample = len(sample_results)
+print(f'Found existing results file with {last_sample} examples')
 
-prompt_batches = (len(prompts) + PROMPT_BATCH_SIZE - 1) // PROMPT_BATCH_SIZE
-first_batch = last_sample // PROMPT_BATCH_SIZE
-print(f'Found existing results file with {last_sample} examples. Skipping {first_batch} batches')
-
-def process_single_prompt(seq_idx: str, prompt: str): 
-    global model, tokenizer, sample_results, config
+def process_single_prompt(seq_id: str, prompt: str): 
+    global model, tokenizer, sample_results, config, experiment
     inputs = tokenizer(prompt, return_tensors = "pt", padding=True, truncation=True, max_length=config.seq_length).to('cuda')
     input_ids = inputs["input_ids"]
     outputs = model.generate(
         **inputs, 
+        do_sample=True,
         max_new_tokens=config.max_new_tokens, 
         pad_token_id=tokenizer.eos_token_id,
         early_stopping=True,
@@ -121,15 +118,14 @@ def process_single_prompt(seq_idx: str, prompt: str):
         temperature=config.temperature
     )
     decoded_outputs = tokenizer.batch_decode(outputs[:, input_ids.shape[1]:], skip_special_tokens=True)[0]
-    seq_id = prompt_batch_idx * PROMPT_BATCH_SIZE + seq_idx 
     code_outputs = [
         prompt_helper.parse_code(prompt, prompt + decoded_output, decoded_output)
         for decoded_output in decoded_outputs
     ]
     model_sample = Sample(
+        experiment=experiment,
         prompt=prompt,
         sample_id=seq_id,
-        prompt=prompt,
         outputs=decoded_outputs,
         code_outputs=code_outputs
     )
@@ -146,19 +142,16 @@ def process_single_prompt(seq_idx: str, prompt: str):
     
 # NOTE: Not sure if the no_grad helps but at this point I'm hopeless and trying anything to reduce memory usage
 with torch.no_grad(): 
-    for prompt_batch_idx in tqdm(range(first_batch, prompt_batches), desc='Sampling batches'):
-        prompt_batch = prompts[prompt_batch_idx * PROMPT_BATCH_SIZE: (prompt_batch_idx + 1) * PROMPT_BATCH_SIZE]
+    for seq_idx, prompt in tqdm(enumerate(prompts), total=len(prompts), desc='Generating samples'):
+        process_single_prompt(seq_idx, prompt)    
 
-        for seq_idx, prompt in enumerate(prompt_batch):
-            process_single_prompt(seq_idx, prompt)    
-
-        if len(sample_results) > 0 and (len(sample_results) - last_sample) % (SAVE_BATCHES * PROMPT_BATCH_SIZE) == 0:
-            temp_path = experiment.root_folder.joinpath(f'results_0_{len(sample_results)}.json')
-            print(f'Saving results to {temp_path}')
-            with open(temp_path, 'w') as temp_results_file:
-                json.dump(sample_results, temp_results_file)
-        
-        torch.cuda.empty_cache()
+    if len(sample_results) > 0 and (len(sample_results) - last_sample) % config.save_examples == 0:
+        temp_path = experiment.root_folder.joinpath(f'results_0_{len(sample_results)}.json')
+        print(f'Saving results to {temp_path}')
+        with open(temp_path, 'w') as temp_results_file:
+            json.dump(sample_results, temp_results_file)
+    
+    torch.cuda.empty_cache()
 
 with open(experiment.root_folder.joinpath('results.json'), 'w') as results_file:
     json.dump(sample_results, results_file)

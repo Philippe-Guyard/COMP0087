@@ -153,7 +153,7 @@ class Sample:
 
     @property
     def stderrs_folder(self) -> Path:
-        return self.stderrs_folder.joinpath('stderrs')
+        return self.eval_folder.joinpath('stderrs')
 
     def output_file_path(self, sample_idx: int) -> Path:
         return self.outputs_folder.joinpath(f'{sample_idx}.txt')
