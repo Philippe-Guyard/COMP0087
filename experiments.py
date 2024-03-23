@@ -159,7 +159,7 @@ class Sample:
         return self.outputs_folder.joinpath(f'{sample_idx}.txt')
 
     def code_output_file_path(self, sample_idx: int) -> Path:
-        return self.outputs_folder.joinpath(f'{sample_idx}.cpp')
+        return self.code_outputs_folder.joinpath(f'{sample_idx}.cpp')
 
     def stderr_file_path(self, sample_idx: int) -> Path:
         return self.stderrs_folder.joinpath(f'{sample_idx}.txt')

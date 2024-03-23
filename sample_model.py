@@ -105,7 +105,13 @@ print(f'Found existing results file with {last_sample} examples')
 
 def process_single_prompt(seq_id: str, prompt: str): 
     global model, tokenizer, sample_results, config, experiment
-    inputs = tokenizer(prompt, return_tensors = "pt", padding=True, truncation=True, max_length=config.seq_length).to('cuda')
+    inputs = tokenizer(
+        prompt, 
+        return_tensors = "pt", 
+        padding=True, 
+        truncation=True, 
+        max_length=config.seq_length
+    ).to('cuda')
     input_ids = inputs["input_ids"]
     outputs = model.generate(
         **inputs, 
@@ -117,7 +123,8 @@ def process_single_prompt(seq_id: str, prompt: str):
         num_return_sequences=config.num_beams,
         temperature=config.temperature
     )
-    decoded_outputs = tokenizer.batch_decode(outputs[:, input_ids.shape[1]:], skip_special_tokens=True)[0]
+    decoded_outputs = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+    assert len(decoded_outputs) == config.num_beams
     code_outputs = [
         prompt_helper.parse_code(prompt, prompt + decoded_output, decoded_output)
         for decoded_output in decoded_outputs
