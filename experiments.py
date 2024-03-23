@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field
 import shutil
@@ -125,6 +125,60 @@ class Experiment:
             FastLanguageModel.for_inference(model)
 
         return model, tokenizer
+
+@dataclass 
+class Sample:
+    experiment: Experiment
+    sample_id: str 
+    prompt: str 
+    outputs: List[str]
+    code_outputs: List[str]
+    num_beams: int = field(default=None)
+
+    @property
+    def eval_folder(self) -> Path:
+        return self.experiment.root_folder.joinpath(f'./evals/{self.sample_id}')
+    
+    @property
+    def prompt_file_path(self) -> Path:
+        return self.eval_folder.joinpath('prompt.txt')
+
+    @property
+    def outputs_folder(self) -> Path:
+        return self.eval_folder.joinpath('outputs')
+
+    @property
+    def code_outputs_folder(self) -> Path:
+        return self.eval_folder.joinpath('code_outputs')
+
+    @property
+    def stderrs_folder(self) -> Path:
+        return self.stderrs_folder.joinpath('stderrs')
+
+    def output_file_path(self, sample_idx: int) -> Path:
+        return self.outputs_folder.joinpath(f'{sample_idx}.txt')
+
+    def code_output_file_path(self, sample_idx: int) -> Path:
+        return self.outputs_folder.joinpath(f'{sample_idx}.cpp')
+
+    def stderr_file_path(self, sample_idx: int) -> Path:
+        return self.stderrs_folder.joinpath(f'{sample_idx}.txt')
+
+    def __post_init__(self):
+        if self.num_beams is None:
+            self.num_beams = len(self.outputs)
+
+        assert len(self.outputs) == self.num_beams, 'Num beams mismatch'
+        assert len(self.code_outputs) == self.num_beams, 'Num beams mismatch'
+
+        self.outputs_folder.mkdir(exist_ok=True, parents=True) 
+        self.code_outputs_folder.mkdir(exist_ok=True, parents=True) 
+        self.stderrs_folder.mkdir(exist_ok=True, parents=True)
+
+        self.prompt_file_path.write_text(self.prompt)
+        for sample_idx, (output, code_output) in enumerate(zip(self.outputs, self.code_outputs)):
+            self.output_file_path(sample_idx).write_text(output)
+            self.code_output_file_path(sample_idx).write_text(code_output)  
 
 @dataclass
 class Evaluation:
