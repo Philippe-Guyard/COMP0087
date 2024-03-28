@@ -14,7 +14,7 @@ class DPOConfig:
     seq_length: int 
     prompt_length: int
     add_lora_adapters: Optional[bool] = field(default=False) 
-    exp_name: Optional[str]
+    exp_name: Optional[str] = field(default=None)
 
 argparse = HfArgumentParser(DPOConfig)
 config: DPOConfig = argparse.parse_args_into_dataclasses()[0]
@@ -66,7 +66,6 @@ training_args = TrainingArguments(
     output_dir = output_dir,
     report_to='wandb',
     run_name=exp.exp_name,
-    evaluation_strategy='steps'
 )
 
 dpo_trainer = DPOTrainer(
@@ -75,10 +74,10 @@ dpo_trainer = DPOTrainer(
     args = training_args,
     beta = 0.1,
     train_dataset = dataset["train"],
-    eval_dataset = dataset["test"],
+    # eval_dataset = dataset["test"],
     tokenizer = tokenizer,
     max_length = config.seq_length,
-    max_prompt_length = config.seq_length,
+    max_prompt_length = config.prompt_length,
 )
 
 dpo_trainer.train()

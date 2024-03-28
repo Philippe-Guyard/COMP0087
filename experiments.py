@@ -40,11 +40,17 @@ class NLPDataset:
         return self.get_path(subset).read_text().splitlines()
     
     def as_hf_dataset(self):
-        assert self.dataset_type == 'samples', 'Not implemented'
-        return load_dataset('text', name=self.dataset_name, data_files={
-            'train': [self.get_path('train').as_posix()],
-            'test':  [self.get_path('test').as_posix()]
-        })
+        if self.dataset_type == 'samples':
+            return load_dataset('text', name=self.dataset_name, data_files={
+                'train': [self.get_path('train').as_posix()],
+                'test':  [self.get_path('test').as_posix()]
+            })
+        elif self.dataset_type == 'preferences':
+            return load_dataset('json', name=self.dataset_name, data_files={
+                'train': [self.get_path('train').as_posix()]
+            })
+        else:
+            assert False 
 
 @dataclass
 class Experiment:
