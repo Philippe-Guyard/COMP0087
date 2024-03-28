@@ -157,18 +157,49 @@ class PromptHelper:
             assert False, 'Not implemented'
         elif self.cut_type == CuttingType.CUT_MIDDLE:
             lines = txt.splitlines()  
-            num_lines = len(lines)
-            num_to_remove = int(self.cut_ratio * num_lines)
 
-            # Handle edge cases (removing all or no lines)
-            if num_to_remove == 0:
-                return txt
-            elif num_to_remove == num_lines:
-                return '' 
+            # Find the 'main' function line
+            for i, line in enumerate(lines):
+                if " main(" in line:  
+                    main_idx = i + 1 
+                    break  
+                else:  
+                    main_idx = 0 
 
-            start_idx = num_lines // 2 - num_to_remove // 2
-            end_idx = start_idx + num_to_remove
-            return '\n'.join(lines[:start_idx] + [PromptHelper.INFILL_TOKEN] + lines[end_idx:])
+            end_idx = len(lines) - 1
+            middle_index = (main_idx + end_idx) // 2
+            
+
+            start = '\n'.join(lines[0:main_idx])
+           
+            above_mid = '\n'.join(lines[main_idx:middle_index])
+            
+            below_mid = '\n'.join(lines[middle_index:end_idx])
+            
+
+            above_stripped = above_mid.strip('\n ')
+            above_end_idx = max(int(self.cut_ratio * len(above_stripped)), 1)
+            above_masked = above_stripped[:-above_end_idx]
+
+            below_stripped = below_mid.strip('\n ')
+            below_end_idx = max(int((self.cut_ratio) * len(below_stripped)), 1)
+            
+            below_masked = below_stripped[below_end_idx:]
+
+            return start + above_masked + PromptHelper.INFILL_TOKEN + "\n" + below_masked + "\n" + lines[end_idx]
+
+                
+            # num_lines = len(lines[main_idx:])
+            # num_to_remove = max(int(self.cut_ratio * num_lines),1)
+
+            # if num_to_remove == 0:
+            #     return txt
+            # elif num_to_remove == num_lines:
+            #     return '' 
+
+            # start_idx = main_idx + num_lines // 2 - num_to_remove // 2
+            # end_idx = start_idx + num_to_remove
+            # return '\n'.join(lines[:start_idx] + [PromptHelper.INFILL_TOKEN] + lines[end_idx:])
 
     def make_prompt(self, cut_code: str) -> str | ChatTemplate:
         if self.base_model == BaseModel.MISTRAL_INSTRUCT:
