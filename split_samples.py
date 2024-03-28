@@ -1,17 +1,41 @@
 import json
 from pathlib import Path
 from compiler_utils import try_compile_cpp 
+from experiments import Experiment, EXPERIMENTS_ROOT, NLPDataset
+from prompt_utils import PromptHelper, CuttingType, BaseModel, ChatTemplate
+from dataclasses import dataclass, field
+from typing import Literal, Optional
 
-from experiments import Experiment, EXPERIMENTS_ROOT
-from prompt_utils import make_sft_example
+from transformers import HfArgumentParser, PreTrainedTokenizer
+from unsloth import FastLanguageModel
 
-exp_name = 'eval_unsloth_mistral-7b-instruct-v0.2-bnb-4bit_8192'
-exp_root = EXPERIMENTS_ROOT.joinpath(exp_name)
-samples_file_path = './samples_big.txt'
-samples = []
-with open(samples_file_path) as samples_file:
-    samples = samples_file.readlines() 
+@dataclass 
+class SplitConfig:
+    exp_name: str 
+    out_dataset_name: str
+    exp_type: Literal['sample', 'eval']
 
+argparse = HfArgumentParser(SplitConfig)
+config = argparse.parse_args_into_dataclasses()[0]
+
+assert config.exp_type == 'eval', 'Splitting sample experiments has not been implemented yet'
+
+exp_root = EXPERIMENTS_ROOT.joinpath(config.exp_name)
+dataset_name = None
+prompt_helper = None 
+tokenizer = None 
+exp_config_path = exp_root.joinpath('config.json')
+with open(exp_config_path) as config_file:
+    exp_config = json.load(config_file)
+    dataset_name = exp_config['dataset_name']
+    prompt_helper = PromptHelper(
+        cut_type=CuttingType(exp_config['cut_type']),
+        base_model=BaseModel(exp_config['base_model']),
+        include_example=exp_config['example'],
+        include_pd=exp_config['problem_description']
+    ) 
+
+samples = NLPDataset('samples', dataset_name).as_list(subset='train') 
 results = None 
 with open(exp_root.joinpath('results.json')) as results_file:
     results = json.load(results_file)
@@ -38,8 +62,8 @@ for seq_id, seq_result in results.items():
         good_samples += 1
     else:
         bad_samples += 1
-        chosen = make_sft_example(sample_path.read_text())
-    
+        chosen = prompt_helper.make_sft_example(sample_path.read_text())
+
         dataset.append({
             'prompt': prompt, 
             'chosen': chosen, 
@@ -47,5 +71,6 @@ for seq_id, seq_result in results.items():
         })
 
 print('Percentage of good samples: ', good_samples / (good_samples + bad_samples))
-with open('./dataset.json', 'w') as output_file: 
+out_dataset = NLPDataset('preferences', config.out_dataset_name)
+with open(out_dataset.get_path(subset='train'), 'w') as output_file: 
     json.dump(dataset, output_file)
